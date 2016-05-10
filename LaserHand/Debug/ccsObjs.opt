@@ -1,0 +1,1 @@
+"./Laserhelper.obj" "./main.obj" "./ws2812.obj" "../lnk_msp430g2553.cmd" -l"libc.a" 
