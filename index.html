@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="chrome=1">
-    <title>Shoot-your-friends by Dublekfx</title>
+    <title>Shoot Your friends by Dublekfx</title>
     <link rel="stylesheet" href="stylesheets/styles.css">
     <link rel="stylesheet" href="stylesheets/github-dark.css">
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js"></script>
@@ -31,7 +31,7 @@
 
       <section>
         <div id="title">
-          <h1>Shoot-your-friends</h1>
+          <h1>Shoot Your friends</h1>
           <p>Elec 327 Final Project</p>
           <hr>
           <span class="credits left">Project maintained by <a href="https://github.com/Dublekfx">Dublekfx</a></span>
@@ -46,15 +46,80 @@
 
 <p>When you were younger, you used to get into pretend firefights with your friends. You'd shape your hand into a gun and shout "Bang!". Heck, maybe you still do. But now that you're older, shooting imaginary bullets just doesn't cut it anymore.</p>
 
-<iframe width="560" height="315" src="https://www.youtube.com/embed/_JeRk07LxIQ" frameborder="0" allowfullscreen></iframe>
+<p><em>Trailer video goes here</em></p>
 
 <h3>
-<a id="team-ltspice-girls-is-pleased-to-announce-shoot-your-friends" class="anchor" href="#team-ltspice-girls-is-pleased-to-announce-shoot-your-friends" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Team LTSpice Girls is pleased to announce <strong>Shoot Your Friends</strong>
+<a id="team-ltspice-girls-is-pleased-to-announce-shoot-your-friends" class="anchor" href="#team-ltspice-girls-is-pleased-to-announce-shoot-your-friends" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Team LTSpice Girls is pleased to announce <em>Shoot Your Friends</em>
 </h3>
 
 <p><em>Detailed video goes here</em></p>
 
-<p><em>Report goes here</em></p>
+<h2>
+<a id="report" class="anchor" href="#report" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Report</h2>
+
+<p>“Shoot your Friends” is a game where you try to shoot your friends, but in a non-lethal and fun way. </p>
+
+<p>Each player wears two devices - one on their arm, and one on their chest. The arm board has an MSP430g2553 microcontroller for processing, a button that functions as the trigger, a laser for shooting, an LED strip to display energy, and a piezo buzzer for sound effects.</p>
+
+<p>The chest board also has a MSP430g2553 for processing, a phototransistor array as the target, a ring of LEDs to display health, and a piezo buzzer for sound effects.</p>
+
+<p>The design works as follows</p>
+
+<ol>
+<li>Player A presses the trigger button on the arm board and holds it for a length of time. </li>
+<li>As hold time increases, the shot powers up. The LED string on player A’s arm changes color to display power consumption upon button release.</li>
+<li>When player A releases the button, the laser on player A’s arm board  fires and modulates at frequency to communicate the shot power.</li>
+<li>Player A consumes energy to fire the shot, and energy consumption is reflected in changes in the arm board’s LED display.</li>
+<li>If player A’s laser hits a phototransistor on player B’s chest board, the ADC in the MSP430 will register higher values and consequently a hit.</li>
+<li>Player B’s chest board demodulates by calculating modulation period.</li>
+<li>Player B takes damage associated with the modulation period and loses health.</li>
+<li>Player B’s chest board LEDs update to display remaining health, and the piezo buzzer plays the “you’ve been hit” sound effect.</li>
+</ol>
+
+<p><img src="https://raw.githubusercontent.com/Dublekfx/Shoot-Your-Friends/gh-pages/images/System%20Diagram%201.PNG" alt="System Image"></p>
+
+<p>The key aspect of this project is the communication between the laser on the arm board and the phototransistor array on the chest board. The following details our design of this project along with challenges and workarounds we implemented.</p>
+
+<h3>
+<a id="laser-modulationdemodulation" class="anchor" href="#laser-modulationdemodulation" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Laser modulation/demodulation</h3>
+
+<p>The laser is modulated at different frequencies to communicate shot power.</p>
+
+<p><img src="https://raw.githubusercontent.com/Dublekfx/Shoot-Your-Friends/gh-pages/images/Modulation.PNG" alt="Modulation"></p>
+
+<p>However, the MSP430g2553 only has two timer modules. One of them is used to control the piezo buzzer, and the other is used for SPI communication to the LED strips.</p>
+
+<p>This leaves us having to implement the PWM output for the laser modulation in software.</p>
+
+<p>At its fastest, the laser needed to modulate with a period of 0.25 milliseconds.</p>
+
+<p>The microcontroller clock ran at 12 Mhz, the highest frequency possible when running on 3V. However, each cycle of the main loop also potentially required updating an LED display, debouncing the trigger button, calculating button hold time, and playing sound effects. </p>
+
+<p>The amount of operations required per cycle makes it impossible to complete a cycle in 0.25 milliseconds.</p>
+
+<p>Therefore, laser modulation is performed in an interrupt. While having long interrupt routines is generally bad design, it is necessary in this case, and potential dangers of having long interrupt routines is offset by having only a watchdog interrupt.</p>
+
+<p>Similarly, demodulation on the chest board is also performed in the watchdog interrupt. The processor records the time between rising and falling edges detected by the phototransistor array. Transition time is summed up across 16 transitions to calculate the modulation time and corresponding damage received.</p>
+
+<h3>
+<a id="phototransistor-sensors" class="anchor" href="#phototransistor-sensors" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Phototransistor sensors</h3>
+
+<p>Each chest board has an array of five phototransistors. The transistors used in this project are PT33406C NPN transistors by Everlight. In their off state, their output is connected to ground by a pull-down resistor. When light from the laser hits them,the output voltage increases depending on luminosity.</p>
+
+<p><img src="https://raw.githubusercontent.com/Dublekfx/Shoot-Your-Friends/gh-pages/images/Target%20Schematic.PNG" alt="Target Schematic"></p>
+
+<p>However, since the voltage increase isn’t always large enough to be read as a digital high, we configure the input pin to send the data to the ADC10.</p>
+
+<p>Upon startup, the ADC10 automatically calibrates itself and calculate a base value.</p>
+
+<p>Hysteresis is performed in detecting hits by the laser. To initially register a hit by the laser, the ADC must read out an value of at least base + 25. Further ADC values must be at least base + 15 to register as high. Values below will be registered as low.</p>
+
+<h3>
+<a id="user-interface" class="anchor" href="#user-interface" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>User Interface</h3>
+
+<p>The arm and chest boards both use a combination of LEDs and a piezo buzzer to convey information to the user. The chest board emits a tune on startup, and plays a tone every time it registers damage. When the player’s health has reached 0, it plays a “game over” tune. It must then be power cycled in order to play again.</p>
+
+<p>The arm board also plays a tune upon startup. When the user holds the trigger, a tone of increasing pitch will sound, with the pitch dependant upon the power of the shot. The board will trill when the button is released to indicate that it is firing. There is also feedback if the user attempts to fire but is out of energy, and when the energy has fully recharged. The LED strip on the arm board displays current energy, and energy to be used when firing.</p>
       </section>
 
     </div>
